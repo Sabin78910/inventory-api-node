@@ -8,6 +8,10 @@ const ProductInput = z.object({
   price: z.number().nonnegative(),
   quantity: z.number().int().nonnegative(),
 });
+const PageQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  offset: z.coerce.number().int().min(0).default(0),
+});
 const StockChange = z.object({ delta: z.number().int() });
 
 export interface Product extends z.infer<typeof ProductInput> {
@@ -27,8 +31,15 @@ export function createApp() {
 
   app.get("/products", (req, res) => {
     const low = req.query.lowStock ? Number(req.query.lowStock) : null;
-    const list = [...products.values()];
-    res.json(low === null || Number.isNaN(low) ? list : list.filter((p) => p.quantity <= low));
+    const page = PageQuery.safeParse(req.query);
+    if (!page.success) {
+      res.status(400).json({ error: page.error.flatten() });
+      return;
+    }
+    const { limit, offset } = page.data;
+    const all = [...products.values()];
+    const list = low === null || Number.isNaN(low) ? all : all.filter((p) => p.quantity <= low);
+    res.json({ items: list.slice(offset, offset + limit), total: list.length, limit, offset });
   });
 
   app.get("/products/:id", (req, res) => {
