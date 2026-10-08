@@ -27,7 +27,9 @@ export function createApp() {
 
   app.get("/products", (req, res) => {
     const low = req.query.lowStock ? Number(req.query.lowStock) : null;
-    const list = [...products.values()];
+    const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+    let list = [...products.values()];
+    if (q) list = list.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q));
     res.json(low === null || Number.isNaN(low) ? list : list.filter((p) => p.quantity <= low));
   });
 

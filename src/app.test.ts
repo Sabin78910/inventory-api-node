@@ -24,4 +24,18 @@ describe("inventory api", () => {
   it("validates input", async () => {
     await request(createApp()).post("/products").send({ name: "", price: -1 }).expect(400);
   });
+
+  it("searches by name or sku case-insensitively", async () => {
+    const app = createApp();
+    await request(app).post("/products").send(sample).expect(201);
+    await request(app).post("/products").send({ ...sample, name: "Tea", sku: "TE-02" }).expect(201);
+    const byName = await request(app).get("/products?q=shaWL").expect(200);
+    expect(byName.body.map((p: { sku: string }) => p.sku)).toEqual(["PS-01"]);
+    const bySku = await request(app).get("/products?q=te-0").expect(200);
+    expect(bySku.body.map((p: { sku: string }) => p.sku)).toEqual(["TE-02"]);
+    const none = await request(app).get("/products?q=zzz").expect(200);
+    expect(none.body).toEqual([]);
+    const all = await request(app).get("/products?q=").expect(200);
+    expect(all.body).toHaveLength(2);
+  });
 });
