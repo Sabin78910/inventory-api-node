@@ -25,10 +25,52 @@ export interface Product extends z.infer<typeof ProductInput> {
   id: number;
 }
 
-export function createApp() {
+export interface AppOptions {
+  rateLimit?: { max: number; windowMs: number };
+  log?: (line: string) => void;
+  now?: () => number;
+}
+
+export function createApp(opts: AppOptions = {}) {
+  const { max, windowMs } = opts.rateLimit ?? { max: 100, windowMs: 60_000 };
+  const log = opts.log ?? ((line: string) => console.log(line));
+  const now = opts.now ?? Date.now;
+  const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
   let nextId = 1;
   const app = express();
+  app.use((req, res, next) => {
+    const start = process.hrtime.bigint();
+    res.on("finish", () => {
+      const ms = Number(process.hrtime.bigint() - start) / 1e6;
+      log(
+        JSON.stringify({
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          ms: Math.round(ms * 100) / 100,
+        }),
+      );
+    });
+    next();
+  });
+  app.use((req, res, next) => {
+    const t = now();
+    const key = req.ip ?? "unknown";
+    let entry = hits.get(key);
+    if (!entry || t >= entry.resetAt) {
+      entry = { count: 0, resetAt: t + windowMs };
+      hits.set(key, entry);
+      for (const [k, v] of hits) if (t >= v.resetAt) hits.delete(k);
+    }
+    entry.count++;
+    if (entry.count > max) {
+      res.setHeader("Retry-After", Math.ceil((entry.resetAt - t) / 1000));
+      res.status(429).json({ error: "Too many requests" });
+      return;
+    }
+    next();
+  });
   app.use(helmet());
   app.use(express.json({ limit: "100kb" }));
 
