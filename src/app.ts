@@ -36,6 +36,16 @@ export function createApp() {
     res.json({ status: "ok" });
   });
 
+  app.get("/summary", (_req, res) => {
+    let totalUnits = 0;
+    let totalValue = 0;
+    for (const p of products.values()) {
+      totalUnits += p.quantity;
+      totalValue += p.quantity * p.price;
+    }
+    res.json({ productCount: products.size, totalUnits, totalValue });
+  });
+
   app.get("/products", (req, res) => {
     const low = req.query.lowStock ? Number(req.query.lowStock) : null;
     const page = PageQuery.safeParse(req.query);

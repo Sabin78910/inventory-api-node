@@ -183,4 +183,23 @@ describe("inventory api", () => {
       await request(app).get("/products?sort=price&order=up").expect(400);
     });
   });
+
+  it("summarizes inventory", async () => {
+    const app = createApp();
+    await request(app).get("/summary").expect(200, {
+      productCount: 0,
+      totalUnits: 0,
+      totalValue: 0,
+    });
+    await request(app).post("/products").send(sample).expect(201);
+    await request(app)
+      .post("/products")
+      .send({ ...sample, sku: "PS-02", price: 100, quantity: 5 })
+      .expect(201);
+    await request(app).get("/summary").expect(200, {
+      productCount: 2,
+      totalUnits: 15,
+      totalValue: 25500,
+    });
+  });
 });
