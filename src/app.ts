@@ -20,6 +20,23 @@ const PageQuery = z.object({
   q: z.string().trim().max(100).optional(),
 });
 const StockChange = z.object({ delta: z.number().int() });
+const MovementInput = z.object({
+  type: z.enum(["in", "out", "adjust"]),
+  quantity: z.number().int().nonnegative(),
+  reason: z.string().trim().min(1).max(200),
+  reference: z.string().trim().max(100).optional(),
+});
+
+export interface Movement {
+  id: number;
+  productId: number;
+  type: "in" | "out" | "adjust";
+  delta: number;
+  balance: number;
+  reason: string;
+  reference?: string;
+  at: number;
+}
 
 export interface Product extends z.infer<typeof ProductInput> {
   id: number;
@@ -37,7 +54,32 @@ export function createApp(opts: AppOptions = {}) {
   const now = opts.now ?? Date.now;
   const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
+  const movements = new Map<number, Movement[]>();
   let nextId = 1;
+  let nextMovementId = 1;
+  const record = (
+    p: Product,
+    type: Movement["type"],
+    delta: number,
+    reason: string,
+    reference?: string,
+  ) => {
+    p.quantity += delta;
+    const m: Movement = {
+      id: nextMovementId++,
+      productId: p.id,
+      type,
+      delta,
+      balance: p.quantity,
+      reason,
+      ...(reference ? { reference } : {}),
+      at: now(),
+    };
+    const list = movements.get(p.id) ?? [];
+    list.push(m);
+    movements.set(p.id, list);
+    return m;
+  };
   const app = express();
   app.use((req, res, next) => {
     const start = process.hrtime.bigint();
@@ -162,12 +204,52 @@ export function createApp(opts: AppOptions = {}) {
       res.status(422).json({ error: "Insufficient stock" });
       return;
     }
-    p.quantity += parsed.data.delta;
+    const { delta } = parsed.data;
+    if (delta !== 0) {
+      record(p, delta > 0 ? "in" : "out", delta, "stock update");
+    }
     res.json(p);
   });
 
+  app.post("/products/:id/movements", (req, res) => {
+    const p = products.get(Number(req.params.id));
+    if (!p) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const parsed = MovementInput.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    const { type, quantity, reason, reference } = parsed.data;
+    // adjust sets stock to an absolute counted quantity
+    const delta =
+      type === "in"
+        ? quantity
+        : type === "out"
+          ? -quantity
+          : quantity - p.quantity;
+    if (p.quantity + delta < 0) {
+      res.status(400).json({ error: "Stock cannot go negative" });
+      return;
+    }
+    res.status(201).json(record(p, type, delta, reason, reference));
+  });
+
+  app.get("/products/:id/movements", (req, res) => {
+    const id = Number(req.params.id);
+    if (!products.has(id)) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    res.json([...(movements.get(id) ?? [])].reverse());
+  });
+
   app.delete("/products/:id", (req, res) => {
-    res.status(products.delete(Number(req.params.id)) ? 204 : 404).end();
+    const id = Number(req.params.id);
+    movements.delete(id);
+    res.status(products.delete(id) ? 204 : 404).end();
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
