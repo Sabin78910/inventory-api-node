@@ -6,6 +6,7 @@ import express, {
 } from "express";
 import helmet from "helmet";
 import { z } from "zod";
+import openapi from "./openapi.json" with { type: "json" };
 
 const ProductInput = z.object({
   name: z.string().trim().min(1).max(100),
@@ -179,6 +180,10 @@ export function createApp(opts: AppOptions = {}) {
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
+  });
+
+  app.get("/openapi.json", (_req, res) => {
+    res.json(openapi);
   });
 
   app.get("/summary", (_req, res) => {
