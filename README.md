@@ -24,3 +24,8 @@ GET /health · GET /products?lowStock=N · GET /products/:id · POST /products �
 | Docker image | push to main / tag | publishes `ghcr.io/sabin78910/inventory-api-node` |
 | CodeQL | push / PR / weekly | security analysis |
 | Dependabot | weekly | dependency update PRs |
+
+## API key (write protection)
+Set the `API_KEY` env var to require an `X-API-Key` header on POST/PATCH/DELETE
+(missing or wrong key → 401). Reads stay public. If unset, writes are open.
+`render.yaml` generates a value on Render; find it in the service's Environment tab.

@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from "node:crypto";
 import express, {
   type NextFunction,
   type Request,
@@ -48,6 +49,7 @@ export interface AppOptions {
   log?: (line: string) => void;
   now?: () => number;
   defaultReorderLevel?: number;
+  apiKey?: string;
 }
 
 export function createApp(opts: AppOptions = {}) {
@@ -55,6 +57,8 @@ export function createApp(opts: AppOptions = {}) {
   const log = opts.log ?? ((line: string) => console.log(line));
   const now = opts.now ?? Date.now;
   const defaultLevel = opts.defaultReorderLevel ?? 10;
+  const apiKey = opts.apiKey ?? process.env.API_KEY;
+  const digest = (v: string) => createHash("sha256").update(v).digest();
   const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
   const movements = new Map<number, Movement[]>();
@@ -117,6 +121,19 @@ export function createApp(opts: AppOptions = {}) {
     next();
   });
   app.use(helmet());
+  app.use((req, res, next) => {
+    if (!apiKey || ["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      next();
+      return;
+    }
+    const given = req.header("x-api-key");
+    // hash both sides so the compare is constant-time regardless of length
+    if (given && timingSafeEqual(digest(given), digest(apiKey))) {
+      next();
+      return;
+    }
+    res.status(401).json({ error: "Unauthorized" });
+  });
   app.use(express.json({ limit: "100kb" }));
 
   app.get("/health", (_req, res) => {

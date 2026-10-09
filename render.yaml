@@ -10,3 +10,5 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      - key: API_KEY
+        generateValue: true   # send as X-API-Key header on writes
