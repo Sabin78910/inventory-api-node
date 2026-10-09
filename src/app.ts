@@ -70,6 +70,65 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.length > 1 || r[0] !== "");
 }
 
+const ENDPOINTS = [
+  ["GET /products", "curl /products?limit=10&q=widget"],
+  [
+    "POST /products",
+    `curl -X POST /products -H 'content-type: application/json' -d '{"name":"Widget","sku":"W-1","price":2.5,"quantity":4}'`,
+  ],
+  [
+    "PATCH /products/:id/stock",
+    `curl -X PATCH /products/1/stock -H 'content-type: application/json' -d '{"delta":-1}'`,
+  ],
+  ["GET /alerts/low-stock", "curl /alerts/low-stock"],
+  ["GET /summary", "curl /summary"],
+  ["GET /products.csv", "curl /products.csv"],
+] as const;
+
+const landingPage = (s: {
+  productCount: number;
+  totalUnits: number;
+  totalValue: number;
+}) => `<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Inventory API</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#0b1020}
+.hero{padding:72px 24px;text-align:center;background:linear-gradient(135deg,#0f172a,#312e81 55%,#7c3aed)}
+h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3.5rem);font-weight:800;color:#fff}
+.hero p{margin:0 auto;max-width:560px;color:#c7d2fe}
+.stats{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:32px}
+.stat{min-width:140px;padding:16px 20px;border-radius:12px;background:rgba(255,255,255,.1)}
+.stat b{display:block;font-size:1.75rem;color:#fff}
+.links{margin-top:28px}
+.links a{display:inline-block;margin:4px;padding:10px 18px;border-radius:999px;background:#fff;color:#312e81;font-weight:600;text-decoration:none}
+main{max-width:960px;margin:0 auto;padding:48px 24px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{padding:20px;border-radius:12px;background:#151b30;border:1px solid #2a3152}
+.card h2{margin:0 0 10px;font-size:1rem;color:#a5b4fc}
+code{display:block;white-space:pre-wrap;word-break:break-all;font-size:.8rem;color:#d1d5db}
+</style></head><body>
+<section class="hero">
+<h1>Inventory API</h1>
+<p>Products, stock movements, low-stock alerts and CSV import/export over a simple REST interface.</p>
+<div class="stats">
+<div class="stat"><b data-stat="products">${s.productCount}</b>products</div>
+<div class="stat"><b data-stat="units">${s.totalUnits}</b>units in stock</div>
+<div class="stat"><b data-stat="value">${s.totalValue.toFixed(2)}</b>total value</div>
+</div>
+<div class="links">
+<a href="/openapi.json">OpenAPI spec</a>
+<a href="https://editor.swagger.io/?url=/openapi.json">Open in viewer</a>
+</div>
+</section>
+<main>
+${ENDPOINTS.map(([title, example]) => `<div class="card"><h2>${title}</h2><code>${example.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</code></div>`).join("\n")}
+</main>
+</body></html>`;
+
 export interface Movement {
   id: number;
   productId: number;
@@ -186,14 +245,22 @@ export function createApp(opts: AppOptions = {}) {
     res.json(openapi);
   });
 
-  app.get("/summary", (_req, res) => {
+  const summary = () => {
     let totalUnits = 0;
     let totalValue = 0;
     for (const p of products.values()) {
       totalUnits += p.quantity;
       totalValue += p.quantity * p.price;
     }
-    res.json({ productCount: products.size, totalUnits, totalValue });
+    return { productCount: products.size, totalUnits, totalValue };
+  };
+
+  app.get("/", (_req, res) => {
+    res.type("html").send(landingPage(summary()));
+  });
+
+  app.get("/summary", (_req, res) => {
+    res.json(summary());
   });
 
   app.get("/alerts/low-stock", (_req, res) => {

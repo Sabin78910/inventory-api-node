@@ -33,7 +33,7 @@ describe("openapi", () => {
       Object.keys(ops as object).map((m) => `${m.toUpperCase()} ${p}`),
     );
     const routes = registeredRoutes(app).filter(
-      (r) => r !== "GET /openapi.json",
+      (r) => r !== "GET /openapi.json" && r !== "GET /",
     );
     expect(routes.length).toBeGreaterThan(10);
     expect(documented.sort()).toEqual(expect.arrayContaining(routes));
