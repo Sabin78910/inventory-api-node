@@ -38,7 +38,11 @@ export function createApp() {
     }
     const { limit, offset } = page.data;
     const all = [...products.values()];
-    const list = low === null || Number.isNaN(low) ? all : all.filter((p) => p.quantity <= low);
+    const byStock = low === null || Number.isNaN(low) ? all : all.filter((p) => p.quantity <= low);
+    const q = typeof req.query.q === "string" ? req.query.q.trim().toLowerCase() : "";
+    const list = q
+      ? byStock.filter((p) => p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q))
+      : byStock;
     res.json({ items: list.slice(offset, offset + limit), total: list.length, limit, offset });
   });
 

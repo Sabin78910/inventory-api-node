@@ -66,4 +66,19 @@ describe("inventory api", () => {
       await request(createApp()).get("/products?limit=100").expect(200);
     });
   });
+
+  describe("search", () => {
+    it("matches name or sku case-insensitively", async () => {
+      const app = createApp();
+      await request(app).post("/products").send(sample).expect(201);
+      await request(app).post("/products").send({ ...sample, name: "Tea", sku: "TEA-9" }).expect(201);
+      const byName = await request(app).get("/products?q=pASHm").expect(200);
+      expect(byName.body.items.map((p: { sku: string }) => p.sku)).toEqual(["PS-01"]);
+      expect(byName.body.total).toBe(1);
+      const bySku = await request(app).get("/products?q=tea-9").expect(200);
+      expect(bySku.body.items).toHaveLength(1);
+      const none = await request(app).get("/products?q=zzz").expect(200);
+      expect(none.body.total).toBe(0);
+    });
+  });
 });
