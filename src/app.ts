@@ -11,6 +11,7 @@ const ProductInput = z.object({
   sku: z.string().trim().min(1).max(40),
   price: z.number().nonnegative(),
   quantity: z.number().int().nonnegative(),
+  reorderLevel: z.number().int().nonnegative().optional(),
 });
 const PageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -46,12 +47,14 @@ export interface AppOptions {
   rateLimit?: { max: number; windowMs: number };
   log?: (line: string) => void;
   now?: () => number;
+  defaultReorderLevel?: number;
 }
 
 export function createApp(opts: AppOptions = {}) {
   const { max, windowMs } = opts.rateLimit ?? { max: 100, windowMs: 60_000 };
   const log = opts.log ?? ((line: string) => console.log(line));
   const now = opts.now ?? Date.now;
+  const defaultLevel = opts.defaultReorderLevel ?? 10;
   const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
   const movements = new Map<number, Movement[]>();
@@ -128,6 +131,24 @@ export function createApp(opts: AppOptions = {}) {
       totalValue += p.quantity * p.price;
     }
     res.json({ productCount: products.size, totalUnits, totalValue });
+  });
+
+  app.get("/alerts/low-stock", (_req, res) => {
+    const alerts = [];
+    for (const p of products.values()) {
+      const reorderLevel = p.reorderLevel ?? defaultLevel;
+      if (p.quantity > reorderLevel) continue;
+      alerts.push({
+        id: p.id,
+        sku: p.sku,
+        name: p.name,
+        quantity: p.quantity,
+        reorderLevel,
+        // restock to twice the reorder level
+        suggestedReorderQuantity: Math.max(1, reorderLevel * 2 - p.quantity),
+      });
+    }
+    res.json(alerts);
   });
 
   app.get("/products", (req, res) => {
