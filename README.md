@@ -4,6 +4,8 @@ REST API for products and stock levels. Built with Node 22, Express, TypeScript 
 
 ![CI](https://github.com/Sabin78910/inventory-api-node/actions/workflows/ci.yml/badge.svg)
 
+**Live:** https://inventory-api-tagg.onrender.com (try [`/health`](https://inventory-api-tagg.onrender.com/health)). Hosted on Render's free plan: it sleeps when idle, so the first request can take about 30–60 s. Data is in memory and resets on restart.
+
 ## Run (Mac Terminal / VS Code)
 ```bash
 npm install
