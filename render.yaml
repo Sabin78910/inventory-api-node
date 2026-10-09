@@ -1,0 +1,12 @@
+# Render Blueprint: dashboard.render.com → New → Blueprint → pick this repo → Apply
+services:
+  - type: web
+    name: inventory-api
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true          # redeploys on every push to main
+    envVars:
+      - key: NODE_ENV
+        value: production
