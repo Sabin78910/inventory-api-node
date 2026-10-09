@@ -1,0 +1,205 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Inventory API",
+    "version": "1.0.0",
+    "description": "REST API for products and stock levels. Writes require an X-API-Key header when the server has API_KEY set."
+  },
+  "components": {
+    "securitySchemes": {
+      "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
+    },
+    "parameters": {
+      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+    },
+    "schemas": {
+      "ProductInput": {
+        "type": "object",
+        "required": ["name", "sku", "price", "quantity"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1, "maxLength": 100 },
+          "sku": { "type": "string", "minLength": 1, "maxLength": 40 },
+          "price": { "type": "number", "minimum": 0 },
+          "quantity": { "type": "integer", "minimum": 0 },
+          "reorderLevel": { "type": "integer", "minimum": 0 }
+        }
+      },
+      "Product": {
+        "allOf": [
+          { "$ref": "#/components/schemas/ProductInput" },
+          { "type": "object", "required": ["id"], "properties": { "id": { "type": "integer" } } }
+        ]
+      },
+      "ProductPage": {
+        "type": "object",
+        "properties": {
+          "items": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } },
+          "total": { "type": "integer" },
+          "limit": { "type": "integer" },
+          "offset": { "type": "integer" }
+        }
+      },
+      "MovementInput": {
+        "type": "object",
+        "required": ["type", "quantity", "reason"],
+        "properties": {
+          "type": { "type": "string", "enum": ["in", "out", "adjust"] },
+          "quantity": { "type": "integer", "minimum": 0 },
+          "reason": { "type": "string", "minLength": 1, "maxLength": 200 },
+          "reference": { "type": "string", "maxLength": 100 }
+        }
+      },
+      "Movement": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "productId": { "type": "integer" },
+          "type": { "type": "string", "enum": ["in", "out", "adjust"] },
+          "delta": { "type": "integer" },
+          "balance": { "type": "integer" },
+          "reason": { "type": "string" },
+          "reference": { "type": "string" },
+          "at": { "type": "integer", "description": "Epoch milliseconds" }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": { "error": { "description": "Message or Zod flattened error", "oneOf": [{ "type": "string" }, { "type": "object" }] } }
+      }
+    },
+    "responses": {
+      "BadRequest": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing or wrong API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "Health check",
+        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } } } }
+      }
+    },
+    "/openapi.json": {
+      "get": { "summary": "This OpenAPI document", "responses": { "200": { "description": "OpenAPI 3 spec" } } }
+    },
+    "/summary": {
+      "get": {
+        "summary": "Inventory totals",
+        "responses": { "200": { "description": "Totals", "content": { "application/json": { "schema": { "type": "object", "properties": { "productCount": { "type": "integer" }, "totalUnits": { "type": "integer" }, "totalValue": { "type": "number" } } } } } } }
+      }
+    },
+    "/alerts/low-stock": {
+      "get": {
+        "summary": "Products at or below their reorder level",
+        "responses": { "200": { "description": "Alerts", "content": { "application/json": { "schema": { "type": "array", "items": { "type": "object", "properties": { "id": { "type": "integer" }, "sku": { "type": "string" }, "name": { "type": "string" }, "quantity": { "type": "integer" }, "reorderLevel": { "type": "integer" }, "suggestedReorderQuantity": { "type": "integer" } } } } } } } }
+      }
+    },
+    "/products": {
+      "get": {
+        "summary": "List products",
+        "parameters": [
+          { "name": "limit", "in": "query", "schema": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 } },
+          { "name": "offset", "in": "query", "schema": { "type": "integer", "minimum": 0, "default": 0 } },
+          { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["price", "name"] } },
+          { "name": "order", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"], "default": "asc" } },
+          { "name": "q", "in": "query", "description": "Search name or SKU", "schema": { "type": "string", "maxLength": 100 } },
+          { "name": "lowStock", "in": "query", "description": "Only products with quantity <= N", "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Page of products", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductPage" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" }
+        }
+      },
+      "post": {
+        "summary": "Create a product",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductInput" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "SKU already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/products.csv": {
+      "get": {
+        "summary": "Export products as CSV",
+        "responses": { "200": { "description": "CSV file", "content": { "text/csv": { "schema": { "type": "string" } } } } }
+      }
+    },
+    "/products/import": {
+      "post": {
+        "summary": "Import products from CSV",
+        "description": "Header must include name, sku, price, quantity; reorderLevel is optional.",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "text/csv": { "schema": { "type": "string" } } } },
+        "responses": {
+          "200": {
+            "description": "Per-row import result",
+            "content": { "application/json": { "schema": { "type": "object", "properties": { "imported": { "type": "integer" }, "failed": { "type": "integer" }, "rows": { "type": "array", "items": { "type": "object", "properties": { "row": { "type": "integer" }, "ok": { "type": "boolean" }, "errors": { "type": "array", "items": { "type": "string" } } } } } } } } }
+          },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" }
+        }
+      }
+    },
+    "/products/{id}": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "get": {
+        "summary": "Get a product",
+        "responses": {
+          "200": { "description": "Product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a product",
+        "security": [{ "ApiKey": [] }],
+        "responses": {
+          "204": { "description": "Deleted" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "description": "Not found" }
+        }
+      }
+    },
+    "/products/{id}/stock": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "patch": {
+        "summary": "Adjust stock by a delta",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["delta"], "properties": { "delta": { "type": "integer" } } } } } },
+        "responses": {
+          "200": { "description": "Updated product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "422": { "description": "Insufficient stock", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
+    "/products/{id}/movements": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "get": {
+        "summary": "Stock movement history, newest first",
+        "responses": {
+          "200": { "description": "Movements", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Movement" } } } } },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
+      "post": {
+        "summary": "Record a stock movement",
+        "description": "type 'adjust' sets stock to the absolute counted quantity.",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MovementInput" } } } },
+        "responses": {
+          "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Movement" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      }
+    }
+  }
+}
