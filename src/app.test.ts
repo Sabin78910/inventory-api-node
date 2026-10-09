@@ -90,6 +90,47 @@ describe("inventory api", () => {
       await request(createApp()).get("/products?limit=100").expect(200);
     });
   });
+  describe("search", () => {
+    async function seedSearch() {
+      const app = createApp();
+      for (const [name, sku] of [
+        ["Pashmina Shawl", "PS-01"],
+        ["Wool Hat", "WH-02"],
+        ["Silk Scarf", "ps-03"],
+      ] as const) {
+        await request(app)
+          .post("/products")
+          .send({ name, sku, price: 1, quantity: 1 })
+          .expect(201);
+      }
+      return app;
+    }
+    const skus = (r: { body: { items: { sku: string }[] } }) =>
+      r.body.items.map((p) => p.sku);
+
+    it("matches name case-insensitively", async () => {
+      const res = await request(await seedSearch())
+        .get("/products?q=WOOL")
+        .expect(200);
+      expect(skus(res)).toEqual(["WH-02"]);
+      expect(res.body.total).toBe(1);
+    });
+
+    it("matches sku case-insensitively", async () => {
+      const res = await request(await seedSearch())
+        .get("/products?q=Ps-0")
+        .expect(200);
+      expect(skus(res)).toEqual(["PS-01", "ps-03"]);
+    });
+
+    it("returns empty for no match and all for empty q", async () => {
+      const app = await seedSearch();
+      const none = await request(app).get("/products?q=zzz").expect(200);
+      expect(none.body).toMatchObject({ total: 0, items: [] });
+      const all = await request(app).get("/products?q=").expect(200);
+      expect(all.body.total).toBe(3);
+    });
+  });
   describe("sorting", () => {
     async function seedSorted() {
       const app = createApp();

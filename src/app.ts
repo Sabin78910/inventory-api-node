@@ -17,6 +17,7 @@ const PageQuery = z.object({
   offset: z.coerce.number().int().min(0).default(0),
   sort: z.enum(["price", "name"]).optional(),
   order: z.enum(["asc", "desc"]).default("asc"),
+  q: z.string().trim().max(100).optional(),
 });
 const StockChange = z.object({ delta: z.number().int() });
 
@@ -42,8 +43,14 @@ export function createApp() {
       res.status(400).json({ error: page.error.flatten() });
       return;
     }
-    const { limit, offset, sort, order } = page.data;
-    const all = [...products.values()];
+    const { limit, offset, sort, order, q } = page.data;
+    const needle = q?.toLowerCase();
+    const all = [...products.values()].filter(
+      (p) =>
+        !needle ||
+        p.name.toLowerCase().includes(needle) ||
+        p.sku.toLowerCase().includes(needle),
+    );
     const list =
       low === null || Number.isNaN(low)
         ? [...all]
