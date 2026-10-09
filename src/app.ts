@@ -150,6 +150,7 @@ export interface AppOptions {
   now?: () => number;
   defaultReorderLevel?: number;
   apiKey?: string;
+  allowedOrigins?: string[];
 }
 
 export function createApp(opts: AppOptions = {}) {
@@ -158,6 +159,12 @@ export function createApp(opts: AppOptions = {}) {
   const now = opts.now ?? Date.now;
   const defaultLevel = opts.defaultReorderLevel ?? 10;
   const apiKey = opts.apiKey ?? process.env.API_KEY;
+  const allowedOrigins =
+    opts.allowedOrigins ??
+    (process.env.ALLOWED_ORIGINS ?? "https://sabin78910.github.io")
+      .split(",")
+      .map((o) => o.trim())
+      .filter(Boolean);
   const digest = (v: string) => createHash("sha256").update(v).digest();
   const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
@@ -221,6 +228,31 @@ export function createApp(opts: AppOptions = {}) {
     next();
   });
   app.use(helmet());
+  // CORS for read-only methods only; writes are never opened cross-origin
+  app.use((req, res, next) => {
+    const origin = req.header("origin");
+    const preflightMethod = req.header("access-control-request-method");
+    const readOnly =
+      ["GET", "HEAD"].includes(req.method) ||
+      (req.method === "OPTIONS" &&
+        (!preflightMethod || ["GET", "HEAD"].includes(preflightMethod)));
+    if (origin && readOnly && allowedOrigins.includes(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.vary("Origin");
+      if (req.method === "OPTIONS") {
+        res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+        res.setHeader(
+          "Access-Control-Allow-Headers",
+          req.header("access-control-request-headers") ?? "",
+        );
+        res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+        res.status(204).end();
+        return;
+      }
+      res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    }
+    next();
+  });
   app.use((req, res, next) => {
     if (!apiKey || ["GET", "HEAD", "OPTIONS"].includes(req.method)) {
       next();
