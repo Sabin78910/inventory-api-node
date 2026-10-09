@@ -1,4 +1,8 @@
-import express, { type NextFunction, type Request, type Response } from "express";
+import express, {
+  type NextFunction,
+  type Request,
+  type Response,
+} from "express";
 import helmet from "helmet";
 import { z } from "zod";
 
@@ -11,6 +15,8 @@ const ProductInput = z.object({
 const PageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
+  sort: z.enum(["price", "name"]).optional(),
+  order: z.enum(["asc", "desc"]).default("asc"),
 });
 const StockChange = z.object({ delta: z.number().int() });
 
@@ -36,10 +42,26 @@ export function createApp() {
       res.status(400).json({ error: page.error.flatten() });
       return;
     }
-    const { limit, offset } = page.data;
+    const { limit, offset, sort, order } = page.data;
     const all = [...products.values()];
-    const list = low === null || Number.isNaN(low) ? all : all.filter((p) => p.quantity <= low);
-    res.json({ items: list.slice(offset, offset + limit), total: list.length, limit, offset });
+    const list =
+      low === null || Number.isNaN(low)
+        ? [...all]
+        : all.filter((p) => p.quantity <= low);
+    if (sort) {
+      const dir = order === "desc" ? -1 : 1;
+      list.sort(
+        (a, b) =>
+          dir *
+          (sort === "price" ? a.price - b.price : a.name.localeCompare(b.name)),
+      );
+    }
+    res.json({
+      items: list.slice(offset, offset + limit),
+      total: list.length,
+      limit,
+      offset,
+    });
   });
 
   app.get("/products/:id", (req, res) => {
