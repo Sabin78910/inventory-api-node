@@ -68,7 +68,7 @@ jobs:
         run: |
           gh issue edit "$N" --remove-label ready --add-label in-progress
           git checkout -b "agent/issue-$N"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with: { node-version: 22, cache: npm }
       - run: npm ci
       - id: claude
