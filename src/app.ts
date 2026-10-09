@@ -29,6 +29,46 @@ const MovementInput = z.object({
   reference: z.string().trim().max(100).optional(),
 });
 
+const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel"];
+const csvCell = (v: string | number | undefined) => {
+  let s = v === undefined ? "" : String(v);
+  // neutralise spreadsheet formula injection
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+  return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+function parseCsv(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (quoted) {
+      if (c === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i++;
+      } else if (c === '"') quoted = false;
+      else cell += c;
+    } else if (c === '"') quoted = true;
+    else if (c === ",") {
+      row.push(cell);
+      cell = "";
+    } else if (c === "\n" || c === "\r") {
+      if (c === "\r" && text[i + 1] === "\n") i++;
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += c;
+  }
+  if (cell || row.length) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows.filter((r) => r.length > 1 || r[0] !== "");
+}
+
 export interface Movement {
   id: number;
   productId: number;
@@ -135,6 +175,7 @@ export function createApp(opts: AppOptions = {}) {
     res.status(401).json({ error: "Unauthorized" });
   });
   app.use(express.json({ limit: "100kb" }));
+  app.use(express.text({ type: "text/csv", limit: "1mb" }));
 
   app.get("/health", (_req, res) => {
     res.json({ status: "ok" });
@@ -201,6 +242,67 @@ export function createApp(opts: AppOptions = {}) {
       limit,
       offset,
     });
+  });
+
+  app.get("/products.csv", (_req, res) => {
+    const lines = [CSV_HEADER.join(",")];
+    for (const p of products.values()) {
+      lines.push(
+        [p.name, p.sku, p.price, p.quantity, p.reorderLevel]
+          .map(csvCell)
+          .join(","),
+      );
+    }
+    res.type("text/csv").send(lines.join("\r\n") + "\r\n");
+  });
+
+  app.post("/products/import", (req, res) => {
+    if (typeof req.body !== "string" || !req.body.trim()) {
+      res.status(400).json({ error: "Expected a non-empty text/csv body" });
+      return;
+    }
+    const [header, ...data] = parseCsv(req.body);
+    const cols = header?.map((h) => h.trim());
+    if (!cols || !CSV_HEADER.slice(0, 4).every((h) => cols.includes(h))) {
+      res.status(400).json({
+        error: `Header must include: ${CSV_HEADER.slice(0, 4).join(", ")}`,
+      });
+      return;
+    }
+    const skus = new Set([...products.values()].map((p) => p.sku));
+    const rows: { row: number; ok: boolean; errors?: string[] }[] = [];
+    data.forEach((cells, i) => {
+      const row = i + 2;
+      const get = (k: string) => cells[cols.indexOf(k)]?.trim() ?? "";
+      const rl = get("reorderLevel");
+      const parsed = ProductInput.safeParse({
+        name: get("name"),
+        sku: get("sku"),
+        price: get("price") === "" ? NaN : Number(get("price")),
+        quantity: get("quantity") === "" ? NaN : Number(get("quantity")),
+        ...(rl === "" ? {} : { reorderLevel: Number(rl) }),
+      });
+      if (!parsed.success) {
+        rows.push({
+          row,
+          ok: false,
+          errors: parsed.error.issues.map(
+            (e) => `${e.path.join(".")}: ${e.message}`,
+          ),
+        });
+        return;
+      }
+      if (skus.has(parsed.data.sku)) {
+        rows.push({ row, ok: false, errors: ["SKU already exists"] });
+        return;
+      }
+      skus.add(parsed.data.sku);
+      const product = { id: nextId++, ...parsed.data };
+      products.set(product.id, product);
+      rows.push({ row, ok: true });
+    });
+    const imported = rows.filter((r) => r.ok).length;
+    res.json({ imported, failed: rows.length - imported, rows });
   });
 
   app.get("/products/:id", (req, res) => {
