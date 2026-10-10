@@ -154,6 +154,17 @@
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
+      "patch": {
+        "summary": "Edit product details (name, price, reorderLevel); stock is unchanged",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 }, "price": { "type": "number", "minimum": 0 }, "reorderLevel": { "type": "integer", "minimum": 0 } } } } } },
+        "responses": {
+          "200": { "description": "Updated product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" }
+        }
+      },
       "delete": {
         "summary": "Delete a product",
         "security": [{ "ApiKey": [] }],
