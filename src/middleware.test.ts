@@ -26,6 +26,45 @@ describe("rate limiting", () => {
   });
 });
 
+describe("RateLimit-* headers", () => {
+  it("decrements Remaining per request and floors at 0 on the 429", async () => {
+    let now = 0;
+    const app = createApp({
+      rateLimit: { max: 2, windowMs: 10_000 },
+      log: () => {},
+      now: () => now,
+    });
+    const a = await request(app).get("/health").expect(200);
+    expect(a.headers["ratelimit-limit"]).toBe("2");
+    expect(a.headers["ratelimit-remaining"]).toBe("1");
+    expect(a.headers["ratelimit-reset"]).toBe("10");
+    now = 1500;
+    const b = await request(app).get("/health").expect(200);
+    expect(b.headers["ratelimit-remaining"]).toBe("0");
+    expect(b.headers["ratelimit-reset"]).toBe("9");
+    const c = await request(app).get("/health").expect(429);
+    expect(c.headers["ratelimit-limit"]).toBe("2");
+    expect(c.headers["ratelimit-remaining"]).toBe("0");
+    expect(c.headers["ratelimit-reset"]).toBe("9");
+    expect(c.headers["retry-after"]).toBe("9");
+  });
+
+  it("restores Remaining after the window passes", async () => {
+    let now = 0;
+    const app = createApp({
+      rateLimit: { max: 2, windowMs: 1000 },
+      log: () => {},
+      now: () => now,
+    });
+    await request(app).get("/health");
+    await request(app).get("/health");
+    now = 1001;
+    const res = await request(app).get("/health").expect(200);
+    expect(res.headers["ratelimit-remaining"]).toBe("1");
+    expect(res.headers["ratelimit-reset"]).toBe("1");
+  });
+});
+
 describe("request logging", () => {
   it("logs a JSON line with method, path, status and ms", async () => {
     const lines: string[] = [];

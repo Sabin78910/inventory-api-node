@@ -23,6 +23,8 @@ Products have an optional `category` (1–50 chars) on create/PATCH and in CSV i
 
 `POST /products` accepts an optional `Idempotency-Key` header: a retry with the same key and body replays the original response (`Idempotent-Replayed: true`); same key with a different body returns 422. Keys live in memory for 24 h.
 
+Every response carries `RateLimit-Limit`, `RateLimit-Remaining` and `RateLimit-Reset` (seconds until the window resets); a 429 also sends `Retry-After`. These are the widely deployed draft-ietf-httpapi-ratelimit-headers names, not the later structured-field form.
+
 API spec: [`/openapi.json`](https://inventory-api-tagg.onrender.com/openapi.json) · [view in Swagger UI](https://petstore.swagger.io/?url=https://inventory-api-tagg.onrender.com/openapi.json)
 
 ## Automation (runs on GitHub, no laptop needed)
