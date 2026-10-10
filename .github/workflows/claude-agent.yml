@@ -7,7 +7,7 @@ name: Claude agent (cloud)
 # Needs repo secret CLAUDE_CODE_OAUTH_TOKEN (from `claude setup-token`, uses your Claude Pro plan).
 on:
   schedule:
-    - cron: "18 */2 * * *"
+    - cron: "18 * * * *"
   issues:
     types: [labeled]
   workflow_dispatch:
