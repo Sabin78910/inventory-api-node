@@ -102,6 +102,12 @@
         "responses": { "200": { "description": "Totals", "content": { "application/json": { "schema": { "type": "object", "properties": { "productCount": { "type": "integer" }, "totalUnits": { "type": "integer" }, "totalValue": { "type": "number" } } } } } } }
       }
     },
+    "/stats": {
+      "get": {
+        "summary": "Landing-page stats: product count, low-stock count and the 5 most recent stock movements",
+        "responses": { "200": { "description": "Stats", "content": { "application/json": { "schema": { "type": "object", "properties": { "productCount": { "type": "integer" }, "lowStockCount": { "type": "integer" }, "recentMovements": { "type": "array", "items": { "type": "object" } } } } } } } }
+      }
+    },
     "/alerts/low-stock": {
       "get": {
         "summary": "Products at or below their reorder level",
