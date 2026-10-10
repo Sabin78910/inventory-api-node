@@ -66,13 +66,22 @@
       },
       "Error": {
         "type": "object",
-        "properties": { "error": { "description": "Message or Zod flattened error", "oneOf": [{ "type": "string" }, { "type": "object" }] } }
+        "description": "RFC 9457 problem details",
+        "required": ["type", "title", "status", "detail", "error"],
+        "properties": {
+          "type": { "type": "string", "example": "about:blank" },
+          "title": { "type": "string" },
+          "status": { "type": "integer" },
+          "detail": { "type": "string" },
+          "error": { "description": "Legacy field: message or Zod flattened error", "oneOf": [{ "type": "string" }, { "type": "object" }] },
+          "errors": { "type": "object", "description": "Zod field errors (400 validation only)", "additionalProperties": { "type": "array", "items": { "type": "string" } } }
+        }
       }
     },
     "responses": {
-      "BadRequest": { "description": "Validation error", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "NotFound": { "description": "Not found", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-      "Unauthorized": { "description": "Missing or wrong API key", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+      "BadRequest": { "description": "Validation error", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "NotFound": { "description": "Not found", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+      "Unauthorized": { "description": "Missing or wrong API key", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
     }
   },
   "paths": {
@@ -125,8 +134,8 @@
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "description": "SKU already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "422": { "description": "Idempotency-Key reused with a different body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "409": { "description": "SKU already exists", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Idempotency-Key reused with a different body", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -180,7 +189,7 @@
         "responses": {
           "204": { "description": "Deleted" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "404": { "description": "Not found" }
+          "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
     },
@@ -196,8 +205,8 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
-          "412": { "description": "If-Match did not match the current ETag", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
-          "422": { "description": "Insufficient stock", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Insufficient stock", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },
@@ -220,7 +229,7 @@
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Movement" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "412": { "description": "If-Match did not match the current ETag", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }

@@ -52,7 +52,7 @@ describe("ETag / If-Match", () => {
       .set("If-Match", e1)
       .send({ delta: 5 })
       .expect(412);
-    expect(res.body).toEqual({ error: expect.any(String) });
+    expect(res.body).toMatchObject({ error: expect.any(String) });
     expect((await request(app).get(`/products/${p.id}`)).body.quantity).toBe(6);
   });
 

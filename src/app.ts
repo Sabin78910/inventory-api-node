@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from "node:crypto";
+import { STATUS_CODES } from "node:http";
 import express, {
   type NextFunction,
   type Request,
@@ -39,6 +40,33 @@ const MovementInput = z.object({
   reason: z.string().trim().min(1).max(200),
   reference: z.string().trim().max(100).optional(),
 });
+
+// RFC 9457 problem details; `error` is kept for backwards compatibility
+function problem(
+  res: Response,
+  status: number,
+  detail: string,
+  extra: { error?: unknown; errors?: unknown } = {},
+) {
+  res
+    .status(status)
+    .type("application/problem+json")
+    .json({
+      type: "about:blank",
+      title: STATUS_CODES[status] ?? "Error",
+      status,
+      detail,
+      error: detail,
+      ...extra,
+    });
+}
+const invalid = (res: Response, err: z.ZodError) => {
+  const flat = err.flatten();
+  problem(res, 400, "Request validation failed", {
+    error: flat,
+    errors: flat.fieldErrors,
+  });
+};
 
 const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel"];
 const csvCell = (v: string | number | undefined) => {
@@ -193,7 +221,7 @@ export function createApp(opts: AppOptions = {}) {
     if (header === undefined) return true;
     const tags = header.split(",").map((t) => t.trim());
     if (tags.includes("*") || tags.includes(etagFor(p))) return true;
-    res.status(412).json({ error: "Precondition failed: stale If-Match" });
+    problem(res, 412, "Precondition failed: stale If-Match");
     return false;
   };
   const record = (
@@ -248,7 +276,7 @@ export function createApp(opts: AppOptions = {}) {
     entry.count++;
     if (entry.count > max) {
       res.setHeader("Retry-After", Math.ceil((entry.resetAt - t) / 1000));
-      res.status(429).json({ error: "Too many requests" });
+      problem(res, 429, "Too many requests");
       return;
     }
     next();
@@ -290,7 +318,7 @@ export function createApp(opts: AppOptions = {}) {
       next();
       return;
     }
-    res.status(401).json({ error: "Unauthorized" });
+    problem(res, 401, "Unauthorized");
   });
   app.use(express.json({ limit: "100kb" }));
   app.use(express.text({ type: "text/csv", limit: "1mb" }));
@@ -343,7 +371,7 @@ export function createApp(opts: AppOptions = {}) {
     const low = req.query.lowStock ? Number(req.query.lowStock) : null;
     const page = PageQuery.safeParse(req.query);
     if (!page.success) {
-      res.status(400).json({ error: page.error.flatten() });
+      invalid(res, page.error);
       return;
     }
     const { limit, offset, sort, order, q } = page.data;
@@ -388,15 +416,17 @@ export function createApp(opts: AppOptions = {}) {
 
   app.post("/products/import", (req, res) => {
     if (typeof req.body !== "string" || !req.body.trim()) {
-      res.status(400).json({ error: "Expected a non-empty text/csv body" });
+      problem(res, 400, "Expected a non-empty text/csv body");
       return;
     }
     const [header, ...data] = parseCsv(req.body);
     const cols = header?.map((h) => h.trim());
     if (!cols || !CSV_HEADER.slice(0, 4).every((h) => cols.includes(h))) {
-      res.status(400).json({
-        error: `Header must include: ${CSV_HEADER.slice(0, 4).join(", ")}`,
-      });
+      problem(
+        res,
+        400,
+        `Header must include: ${CSV_HEADER.slice(0, 4).join(", ")}`,
+      );
       return;
     }
     const skus = new Set([...products.values()].map((p) => p.sku));
@@ -438,7 +468,7 @@ export function createApp(opts: AppOptions = {}) {
   app.get("/products/:id", (req, res) => {
     const p = products.get(Number(req.params.id));
     if (!p) {
-      res.status(404).json({ error: "Not found" });
+      problem(res, 404, "Not found");
       return;
     }
     res.setHeader("ETag", etagFor(p));
@@ -470,10 +500,11 @@ export function createApp(opts: AppOptions = {}) {
     const hit = idempotency.get(key);
     if (hit) {
       if (hit.fp !== fp) {
-        res.status(422).json({
-          error:
-            "Idempotency-Key was already used with a different request body",
-        });
+        problem(
+          res,
+          422,
+          "Idempotency-Key was already used with a different request body",
+        );
         return;
       }
       for (const [h, v] of Object.entries(hit.headers)) res.setHeader(h, v);
@@ -499,11 +530,11 @@ export function createApp(opts: AppOptions = {}) {
   app.post("/products", (req, res) => {
     const parsed = ProductInput.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
+      invalid(res, parsed.error);
       return;
     }
     if ([...products.values()].some((p) => p.sku === parsed.data.sku)) {
-      res.status(409).json({ error: "SKU already exists" });
+      problem(res, 409, "SKU already exists");
       return;
     }
     const product = { id: nextId++, ...parsed.data };
@@ -515,12 +546,12 @@ export function createApp(opts: AppOptions = {}) {
   app.patch("/products/:id", (req, res) => {
     const p = products.get(Number(req.params.id));
     if (!p) {
-      res.status(404).json({ error: "Not found" });
+      problem(res, 404, "Not found");
       return;
     }
     const parsed = ProductPatch.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
+      invalid(res, parsed.error);
       return;
     }
     for (const [k, v] of Object.entries(parsed.data)) {
@@ -534,17 +565,17 @@ export function createApp(opts: AppOptions = {}) {
   app.patch("/products/:id/stock", (req, res) => {
     const p = products.get(Number(req.params.id));
     if (!p) {
-      res.status(404).json({ error: "Not found" });
+      problem(res, 404, "Not found");
       return;
     }
     if (!preconditionOk(req, res, p)) return;
     const parsed = StockChange.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
+      invalid(res, parsed.error);
       return;
     }
     if (p.quantity + parsed.data.delta < 0) {
-      res.status(422).json({ error: "Insufficient stock" });
+      problem(res, 422, "Insufficient stock");
       return;
     }
     const { delta } = parsed.data;
@@ -558,13 +589,13 @@ export function createApp(opts: AppOptions = {}) {
   app.post("/products/:id/movements", (req, res) => {
     const p = products.get(Number(req.params.id));
     if (!p) {
-      res.status(404).json({ error: "Not found" });
+      problem(res, 404, "Not found");
       return;
     }
     if (!preconditionOk(req, res, p)) return;
     const parsed = MovementInput.safeParse(req.body);
     if (!parsed.success) {
-      res.status(400).json({ error: parsed.error.flatten() });
+      invalid(res, parsed.error);
       return;
     }
     const { type, quantity, reason, reference } = parsed.data;
@@ -576,7 +607,7 @@ export function createApp(opts: AppOptions = {}) {
           ? -quantity
           : quantity - p.quantity;
     if (p.quantity + delta < 0) {
-      res.status(400).json({ error: "Stock cannot go negative" });
+      problem(res, 400, "Stock cannot go negative");
       return;
     }
     res.status(201).json(record(p, type, delta, reason, reference));
@@ -585,7 +616,7 @@ export function createApp(opts: AppOptions = {}) {
   app.get("/products/:id/movements", (req, res) => {
     const id = Number(req.params.id);
     if (!products.has(id)) {
-      res.status(404).json({ error: "Not found" });
+      problem(res, 404, "Not found");
       return;
     }
     res.json([...(movements.get(id) ?? [])].reverse());
@@ -595,12 +626,13 @@ export function createApp(opts: AppOptions = {}) {
     const id = Number(req.params.id);
     movements.delete(id);
     versions.delete(id);
-    res.status(products.delete(id) ? 204 : 404).end();
+    if (products.delete(id)) res.status(204).end();
+    else problem(res, 404, "Not found");
   });
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    res.status(400).json({ error: err.message });
+    problem(res, 400, err.message);
   });
 
   return app;

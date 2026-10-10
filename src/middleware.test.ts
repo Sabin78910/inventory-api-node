@@ -8,7 +8,7 @@ describe("rate limiting", () => {
     await request(app).get("/health").expect(200);
     await request(app).get("/health").expect(200);
     const res = await request(app).get("/health").expect(429);
-    expect(res.body).toEqual({ error: "Too many requests" });
+    expect(res.body).toMatchObject({ error: "Too many requests" });
     expect(res.headers["retry-after"]).toBeDefined();
   });
 
