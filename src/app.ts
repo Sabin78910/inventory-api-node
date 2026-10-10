@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from "node:crypto";
+import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { STATUS_CODES } from "node:http";
 import express, {
   type NextFunction,
@@ -70,6 +70,7 @@ function problem(
       detail,
       error: detail,
       ...extra,
+      requestId: res.getHeader("X-Request-Id"),
     });
 }
 const invalid = (res: Response, err: z.ZodError) => {
@@ -270,11 +271,21 @@ export function createApp(opts: AppOptions = {}) {
   };
   const app = express();
   app.use((req, res, next) => {
+    const incoming = req.header("x-request-id");
+    const id =
+      incoming && /^[A-Za-z0-9._-]{1,64}$/.test(incoming)
+        ? incoming
+        : randomUUID();
+    res.setHeader("X-Request-Id", id);
+    next();
+  });
+  app.use((req, res, next) => {
     const start = process.hrtime.bigint();
     res.on("finish", () => {
       const ms = Number(process.hrtime.bigint() - start) / 1e6;
       log(
         JSON.stringify({
+          requestId: res.getHeader("X-Request-Id"),
           method: req.method,
           path: req.path,
           status: res.statusCode,
@@ -317,6 +328,7 @@ export function createApp(opts: AppOptions = {}) {
     if (origin && readOnly && allowedOrigins.includes(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.vary("Origin");
+      res.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
       if (req.method === "OPTIONS") {
         res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
         res.setHeader(
