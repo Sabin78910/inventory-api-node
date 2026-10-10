@@ -179,8 +179,21 @@ export function createApp(opts: AppOptions = {}) {
   const hits = new Map<string, { count: number; resetAt: number }>();
   const products = new Map<number, Product>();
   const movements = new Map<number, Movement[]>();
+  const versions = new Map<number, number>();
   let nextId = 1;
   let nextMovementId = 1;
+  const etagFor = (p: Product) => `"${p.id}-${versions.get(p.id) ?? 0}"`;
+  const bump = (p: Product) =>
+    versions.set(p.id, (versions.get(p.id) ?? 0) + 1);
+  // optional If-Match precondition; sends 412 and returns false on mismatch
+  const preconditionOk = (req: Request, res: Response, p: Product) => {
+    const header = req.header("if-match");
+    if (header === undefined) return true;
+    const tags = header.split(",").map((t) => t.trim());
+    if (tags.includes("*") || tags.includes(etagFor(p))) return true;
+    res.status(412).json({ error: "Precondition failed: stale If-Match" });
+    return false;
+  };
   const record = (
     p: Product,
     type: Movement["type"],
@@ -189,6 +202,7 @@ export function createApp(opts: AppOptions = {}) {
     reference?: string,
   ) => {
     p.quantity += delta;
+    bump(p);
     const m: Movement = {
       id: nextMovementId++,
       productId: p.id,
@@ -425,6 +439,7 @@ export function createApp(opts: AppOptions = {}) {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    res.setHeader("ETag", etagFor(p));
     res.json(p);
   });
 
@@ -440,6 +455,7 @@ export function createApp(opts: AppOptions = {}) {
     }
     const product = { id: nextId++, ...parsed.data };
     products.set(product.id, product);
+    res.setHeader("ETag", etagFor(product));
     res.status(201).json(product);
   });
 
@@ -457,6 +473,8 @@ export function createApp(opts: AppOptions = {}) {
     for (const [k, v] of Object.entries(parsed.data)) {
       if (v !== undefined) Object.assign(p, { [k]: v });
     }
+    bump(p);
+    res.setHeader("ETag", etagFor(p));
     res.json(p);
   });
 
@@ -466,6 +484,7 @@ export function createApp(opts: AppOptions = {}) {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    if (!preconditionOk(req, res, p)) return;
     const parsed = StockChange.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -479,6 +498,7 @@ export function createApp(opts: AppOptions = {}) {
     if (delta !== 0) {
       record(p, delta > 0 ? "in" : "out", delta, "stock update");
     }
+    res.setHeader("ETag", etagFor(p));
     res.json(p);
   });
 
@@ -488,6 +508,7 @@ export function createApp(opts: AppOptions = {}) {
       res.status(404).json({ error: "Not found" });
       return;
     }
+    if (!preconditionOk(req, res, p)) return;
     const parsed = MovementInput.safeParse(req.body);
     if (!parsed.success) {
       res.status(400).json({ error: parsed.error.flatten() });
@@ -520,6 +541,7 @@ export function createApp(opts: AppOptions = {}) {
   app.delete("/products/:id", (req, res) => {
     const id = Number(req.params.id);
     movements.delete(id);
+    versions.delete(id);
     res.status(products.delete(id) ? 204 : 404).end();
   });
 

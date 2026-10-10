@@ -10,7 +10,9 @@
       "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" }
     },
     "parameters": {
-      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+      "id": { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } },
+      "ifMatch": { "name": "If-Match", "in": "header", "required": false, "description": "ETag from GET /products/{id}; 412 if stale. Optional.", "schema": { "type": "string" } },
+      "ifNoneMatch": { "name": "If-None-Match", "in": "header", "required": false, "description": "Returns 304 if it matches the current ETag.", "schema": { "type": "string" } }
     },
     "schemas": {
       "ProductInput": {
@@ -149,8 +151,10 @@
       "parameters": [{ "$ref": "#/components/parameters/id" }],
       "get": {
         "summary": "Get a product",
+        "parameters": [{ "$ref": "#/components/parameters/ifNoneMatch" }],
         "responses": {
-          "200": { "description": "Product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
+          "304": { "description": "Not modified (If-None-Match matched)" },
+          "200": { "description": "Product", "headers": { "ETag": { "description": "Version of the product; changes on any stock or detail change", "schema": { "type": "string" } } }, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       },
@@ -180,12 +184,14 @@
       "patch": {
         "summary": "Adjust stock by a delta",
         "security": [{ "ApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ifMatch" }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["delta"], "properties": { "delta": { "type": "integer" } } } } } },
         "responses": {
           "200": { "description": "Updated product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "412": { "description": "If-Match did not match the current ETag", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "422": { "description": "Insufficient stock", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
@@ -201,6 +207,7 @@
       },
       "post": {
         "summary": "Record a stock movement",
+        "parameters": [{ "$ref": "#/components/parameters/ifMatch" }],
         "description": "type 'adjust' sets stock to the absolute counted quantity.",
         "security": [{ "ApiKey": [] }],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MovementInput" } } } },
@@ -208,6 +215,7 @@
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Movement" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "412": { "description": "If-Match did not match the current ETag", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
       }
