@@ -115,13 +115,18 @@
       },
       "post": {
         "summary": "Create a product",
+        "description": "Optionally send an Idempotency-Key header. A repeat with the same key and body replays the stored response (with Idempotent-Replayed: true); same key with a different body returns 422. Keys are kept in memory for 24 h.",
         "security": [{ "ApiKey": [] }],
+        "parameters": [
+          { "name": "Idempotency-Key", "in": "header", "required": false, "schema": { "type": "string" } }
+        ],
         "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ProductInput" } } } },
         "responses": {
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
-          "409": { "description": "SKU already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+          "409": { "description": "SKU already exists", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "Idempotency-Key reused with a different body", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
     },

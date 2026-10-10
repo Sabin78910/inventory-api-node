@@ -17,6 +17,8 @@ docker build -t inventory-api . && docker run -p 3000:3000 inventory-api
 ## API / Output
 GET /health · GET /products?lowStock=N · GET /products/:id · POST /products · PATCH /products/:id/stock {delta} · DELETE /products/:id
 
+`POST /products` accepts an optional `Idempotency-Key` header: a retry with the same key and body replays the original response (`Idempotent-Replayed: true`); same key with a different body returns 422. Keys live in memory for 24 h.
+
 API spec: [`/openapi.json`](https://inventory-api-tagg.onrender.com/openapi.json) · [view in Swagger UI](https://petstore.swagger.io/?url=https://inventory-api-tagg.onrender.com/openapi.json)
 
 ## Automation (runs on GitHub, no laptop needed)

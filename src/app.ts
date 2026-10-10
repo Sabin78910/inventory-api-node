@@ -154,6 +154,8 @@ export interface Product extends z.infer<typeof ProductInput> {
   id: number;
 }
 
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
+
 export interface AppOptions {
   rateLimit?: { max: number; windowMs: number };
   log?: (line: string) => void;
@@ -441,6 +443,57 @@ export function createApp(opts: AppOptions = {}) {
     }
     res.setHeader("ETag", etagFor(p));
     res.json(p);
+  });
+
+  const idempotency = new Map<
+    string,
+    {
+      fp: string;
+      at: number;
+      status: number;
+      headers: Record<string, string>;
+      body: unknown;
+    }
+  >();
+
+  app.post("/products", (req, res, next) => {
+    const key = req.header("Idempotency-Key");
+    if (!key) {
+      next();
+      return;
+    }
+    const t = now();
+    for (const [k, v] of idempotency) {
+      if (t - v.at >= IDEMPOTENCY_TTL_MS) idempotency.delete(k);
+    }
+    const fp = JSON.stringify(req.body ?? null);
+    const hit = idempotency.get(key);
+    if (hit) {
+      if (hit.fp !== fp) {
+        res.status(422).json({
+          error:
+            "Idempotency-Key was already used with a different request body",
+        });
+        return;
+      }
+      for (const [h, v] of Object.entries(hit.headers)) res.setHeader(h, v);
+      res.setHeader("Idempotent-Replayed", "true");
+      res.status(hit.status).json(hit.body);
+      return;
+    }
+    const json = res.json.bind(res);
+    res.json = (b: unknown) => {
+      const etag = res.getHeader("ETag");
+      idempotency.set(key, {
+        fp,
+        at: t,
+        status: res.statusCode,
+        headers: etag ? { ETag: String(etag) } : {},
+        body: b,
+      });
+      return json(b);
+    };
+    next();
   });
 
   app.post("/products", (req, res) => {
