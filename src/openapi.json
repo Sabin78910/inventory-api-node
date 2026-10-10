@@ -212,6 +212,21 @@
         }
       }
     },
+    "/stock/batch": {
+      "post": {
+        "summary": "Atomically apply up to 100 stock adjustments",
+        "description": "All-or-nothing: if any item is invalid, unknown or would make stock negative, nothing is applied. Items for the same product are applied in order and checked cumulatively. One movement is recorded per non-zero item.",
+        "security": [{ "ApiKey": [] }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["items"], "properties": { "items": { "type": "array", "minItems": 1, "maxItems": 100, "items": { "type": "object", "required": ["id", "delta"], "properties": { "id": { "type": "integer" }, "delta": { "type": "integer" }, "reason": { "type": "string", "maxLength": 200 } } } } } } } } },
+        "responses": {
+          "200": { "description": "Updated products, one per distinct id in first-seen order", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "413": { "description": "More than 100 items", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
+          "422": { "description": "One or more items failed; `errors` lists {index, id, reason}", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/products/{id}/movements": {
       "parameters": [{ "$ref": "#/components/parameters/id" }],
       "get": {

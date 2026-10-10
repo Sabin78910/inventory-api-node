@@ -71,6 +71,14 @@ const invalid = (res: Response, err: z.ZodError) => {
   });
 };
 
+const BATCH_MAX = 100;
+const BatchItem = z.object({
+  id: z.number().int(),
+  delta: z.number().int(),
+  reason: z.string().trim().min(1).max(200).optional(),
+});
+const BatchInput = z.object({ items: z.array(BatchItem).min(1) });
+
 const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel", "category"];
 const csvCell = (v: string | number | undefined) => {
   let s = v === undefined ? "" : String(v);
@@ -591,6 +599,50 @@ export function createApp(opts: AppOptions = {}) {
     }
     res.setHeader("ETag", etagFor(p));
     res.json(p);
+  });
+
+  app.post("/stock/batch", (req, res) => {
+    const rawItems = (req.body as { items?: unknown } | undefined)?.items;
+    if (Array.isArray(rawItems) && rawItems.length > BATCH_MAX) {
+      problem(res, 413, `Batch exceeds ${BATCH_MAX} items`);
+      return;
+    }
+    const parsed = BatchInput.safeParse(req.body);
+    if (!parsed.success) {
+      invalid(res, parsed.error);
+      return;
+    }
+    // validate everything against running balances before mutating anything
+    const balances = new Map<number, number>();
+    const failures: { index: number; id: number; reason: string }[] = [];
+    parsed.data.items.forEach(({ id, delta }, index) => {
+      const p = products.get(id);
+      if (!p) {
+        failures.push({ index, id, reason: "Product not found" });
+        return;
+      }
+      const next = (balances.get(id) ?? p.quantity) + delta;
+      if (next < 0) {
+        failures.push({ index, id, reason: "Insufficient stock" });
+        return;
+      }
+      balances.set(id, next);
+    });
+    if (failures.length > 0) {
+      problem(res, 422, "Batch rejected; no adjustments applied", {
+        errors: failures,
+      });
+      return;
+    }
+    const touched = new Map<number, Product>();
+    for (const { id, delta, reason } of parsed.data.items) {
+      const p = products.get(id) as Product;
+      if (delta !== 0) {
+        record(p, delta > 0 ? "in" : "out", delta, reason ?? "batch adjustment");
+      }
+      touched.set(id, p);
+    }
+    res.json([...touched.values()]);
   });
 
   app.post("/products/:id/movements", (req, res) => {
