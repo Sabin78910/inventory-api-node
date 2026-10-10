@@ -36,6 +36,15 @@ const PageQuery = z.object({
   q: z.string().trim().max(100).optional(),
   category: z.string().trim().max(50).optional(),
 });
+const MovementQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(200).default(50),
+  offset: z.coerce.number().int().min(0).default(0),
+  since: z
+    .string()
+    .datetime({ offset: true })
+    .transform((v) => Date.parse(v))
+    .optional(),
+});
 const StockChange = z.object({ delta: z.number().int() });
 const MovementInput = z.object({
   type: z.enum(["in", "out", "adjust"]),
@@ -682,7 +691,17 @@ export function createApp(opts: AppOptions = {}) {
       problem(res, 404, "Not found");
       return;
     }
-    res.json([...(movements.get(id) ?? [])].reverse());
+    const query = MovementQuery.safeParse(req.query);
+    if (!query.success) {
+      invalid(res, query.error);
+      return;
+    }
+    const { limit, offset, since } = query.data;
+    const list = [...(movements.get(id) ?? [])]
+      .reverse()
+      .filter((m) => since === undefined || m.at >= since);
+    res.setHeader("X-Total-Count", list.length);
+    res.json(list.slice(offset, offset + limit));
   });
 
   app.delete("/products/:id", (req, res) => {
