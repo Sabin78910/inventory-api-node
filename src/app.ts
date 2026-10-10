@@ -15,11 +15,13 @@ const ProductInput = z.object({
   price: z.number().nonnegative(),
   quantity: z.number().int().nonnegative(),
   reorderLevel: z.number().int().nonnegative().optional(),
+  category: z.string().trim().min(1).max(50).optional(),
 });
 const ProductPatch = ProductInput.pick({
   name: true,
   price: true,
   reorderLevel: true,
+  category: true,
 })
   .partial()
   .strict()
@@ -32,6 +34,7 @@ const PageQuery = z.object({
   sort: z.enum(["price", "name"]).optional(),
   order: z.enum(["asc", "desc"]).default("asc"),
   q: z.string().trim().max(100).optional(),
+  category: z.string().trim().max(50).optional(),
 });
 const StockChange = z.object({ delta: z.number().int() });
 const MovementInput = z.object({
@@ -68,7 +71,7 @@ const invalid = (res: Response, err: z.ZodError) => {
   });
 };
 
-const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel"];
+const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel", "category"];
 const csvCell = (v: string | number | undefined) => {
   let s = v === undefined ? "" : String(v);
   // neutralise spreadsheet formula injection
@@ -374,13 +377,15 @@ export function createApp(opts: AppOptions = {}) {
       invalid(res, page.error);
       return;
     }
-    const { limit, offset, sort, order, q } = page.data;
+    const { limit, offset, sort, order, q, category } = page.data;
+    const cat = category?.toLowerCase();
     const needle = q?.toLowerCase();
     const all = [...products.values()].filter(
       (p) =>
-        !needle ||
-        p.name.toLowerCase().includes(needle) ||
-        p.sku.toLowerCase().includes(needle),
+        (!cat || p.category?.toLowerCase() === cat) &&
+        (!needle ||
+          p.name.toLowerCase().includes(needle) ||
+          p.sku.toLowerCase().includes(needle)),
     );
     const list =
       low === null || Number.isNaN(low)
@@ -406,7 +411,7 @@ export function createApp(opts: AppOptions = {}) {
     const lines = [CSV_HEADER.join(",")];
     for (const p of products.values()) {
       lines.push(
-        [p.name, p.sku, p.price, p.quantity, p.reorderLevel]
+        [p.name, p.sku, p.price, p.quantity, p.reorderLevel, p.category]
           .map(csvCell)
           .join(","),
       );
@@ -435,12 +440,14 @@ export function createApp(opts: AppOptions = {}) {
       const row = i + 2;
       const get = (k: string) => cells[cols.indexOf(k)]?.trim() ?? "";
       const rl = get("reorderLevel");
+      const category = get("category");
       const parsed = ProductInput.safeParse({
         name: get("name"),
         sku: get("sku"),
         price: get("price") === "" ? NaN : Number(get("price")),
         quantity: get("quantity") === "" ? NaN : Number(get("quantity")),
         ...(rl === "" ? {} : { reorderLevel: Number(rl) }),
+        ...(category === "" ? {} : { category }),
       });
       if (!parsed.success) {
         rows.push({

@@ -14,16 +14,16 @@ describe("CSV export", () => {
     const res = await request(app).get("/products.csv").expect(200);
     expect(res.headers["content-type"]).toMatch(/text\/csv/);
     expect(res.text.split("\r\n")).toEqual([
-      "name,sku,price,quantity,reorderLevel",
-      '"Bolt, ""M6""",B1,1.5,3,',
-      "'=cmd,B2,2,0,5",
+      "name,sku,price,quantity,reorderLevel,category",
+      '"Bolt, ""M6""",B1,1.5,3,,',
+      "'=cmd,B2,2,0,5,",
       "",
     ]);
   });
 
   it("exports just the header when empty", async () => {
     const res = await request(mk()).get("/products.csv").expect(200);
-    expect(res.text).toBe("name,sku,price,quantity,reorderLevel\r\n");
+    expect(res.text).toBe("name,sku,price,quantity,reorderLevel,category\r\n");
   });
 });
 
@@ -31,7 +31,7 @@ describe("CSV import", () => {
   it("imports valid rows and reports invalid ones per row", async () => {
     const app = mk();
     const csv = [
-      "name,sku,price,quantity,reorderLevel",
+      "name,sku,price,quantity,reorderLevel,category",
       "Widget,W1,2.5,10,",
       ",W2,1,1,",
       "Gadget,W1,1,1,",

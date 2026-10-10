@@ -15,7 +15,9 @@ docker build -t inventory-api . && docker run -p 3000:3000 inventory-api
 ```
 
 ## API / Output
-GET /health · GET /products?lowStock=N · GET /products/:id · POST /products · PATCH /products/:id/stock {delta} · DELETE /products/:id
+GET /health · GET /products?lowStock=N&category=X · GET /products/:id · POST /products · PATCH /products/:id/stock {delta} · DELETE /products/:id
+
+Products have an optional `category` (1–50 chars) on create/PATCH and in CSV import/export; `GET /products?category=x` filters case-insensitively and combines with `q`, `sort`, `limit` and `offset`.
 
 `POST /products` accepts an optional `Idempotency-Key` header: a retry with the same key and body replays the original response (`Idempotent-Replayed: true`); same key with a different body returns 422. Keys live in memory for 24 h.
 
