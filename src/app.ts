@@ -144,48 +144,103 @@ const ENDPOINTS = [
   ["GET /products.csv", "curl /products.csv"],
 ] as const;
 
-const landingPage = (s: {
-  productCount: number;
-  totalUnits: number;
-  totalValue: number;
-}) => `<!doctype html>
+const esc = (v: string) =>
+  v.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/"/g, "&quot;");
+
+const PLAYGROUND_PATHS = [
+  "/products?limit=5",
+  "/alerts/low-stock",
+  "/summary",
+  "/stats",
+  "/health",
+];
+
+const landingPage = (
+  s: { productCount: number; totalUnits: number; totalValue: number },
+  nonce: string,
+  lowStockCount: number,
+) => `<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Inventory API</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
-<style>
+<style nonce="${nonce}">
 *{box-sizing:border-box}
-body{margin:0;font-family:Inter,system-ui,sans-serif;color:#e5e7eb;background:#0b1020}
-.hero{padding:72px 24px;text-align:center;background:linear-gradient(135deg,#0f172a,#312e81 55%,#7c3aed)}
-h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3.5rem);font-weight:800;color:#fff}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#e5e7eb;background:#070a16}
+.hero{padding:72px 24px;text-align:center;background:radial-gradient(circle at 20% 0,#7c3aed55,transparent 50%),radial-gradient(circle at 80% 20%,#06b6d444,transparent 50%)}
+h1{margin:0 0 12px;font-size:clamp(2rem,6vw,3.5rem);font-weight:800;background:linear-gradient(90deg,#a78bfa,#22d3ee);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hero p{margin:0 auto;max-width:560px;color:#c7d2fe}
 .stats{display:flex;flex-wrap:wrap;gap:16px;justify-content:center;margin-top:32px}
-.stat{min-width:140px;padding:16px 20px;border-radius:12px;background:rgba(255,255,255,.1)}
+.glass{border-radius:16px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);backdrop-filter:blur(12px)}
+.stat{min-width:140px;padding:16px 20px}
 .stat b{display:block;font-size:1.75rem;color:#fff}
 .links{margin-top:28px}
-.links a{display:inline-block;margin:4px;padding:10px 18px;border-radius:999px;background:#fff;color:#312e81;font-weight:600;text-decoration:none}
-main{max-width:960px;margin:0 auto;padding:48px 24px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
-.card{padding:20px;border-radius:12px;background:#151b30;border:1px solid #2a3152}
-.card h2{margin:0 0 10px;font-size:1rem;color:#a5b4fc}
-code{display:block;white-space:pre-wrap;word-break:break-all;font-size:.8rem;color:#d1d5db}
+.links a{display:inline-block;margin:4px;padding:10px 18px;border-radius:999px;background:linear-gradient(90deg,#8b5cf6,#06b6d4);color:#fff;font-weight:600;text-decoration:none}
+main{max-width:960px;margin:0 auto;padding:32px 24px 48px;display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+.card{padding:20px}
+.card h2,#playground h2,.recent h2{margin:0 0 10px;font-size:1rem;color:#a5b4fc}
+code,pre{display:block;white-space:pre-wrap;word-break:break-all;font-size:.8rem;color:#d1d5db;font-family:ui-monospace,monospace}
+section.wide{max-width:960px;margin:0 auto;padding:0 24px 24px}
+#playground,.recent{padding:20px}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+select,button{font:inherit;padding:8px 14px;border-radius:8px;border:1px solid #3b4270;background:#101630;color:#e5e7eb}
+button{background:linear-gradient(90deg,#8b5cf6,#06b6d4);border:0;color:#fff;font-weight:600;cursor:pointer}
+select{flex:1;min-width:200px}
+#out{margin-top:12px;padding:12px;border-radius:8px;background:#05070f;max-height:320px;overflow:auto}
+a:focus-visible,button:focus-visible,select:focus-visible{outline:2px solid #22d3ee;outline-offset:2px}
 </style></head><body>
 <section class="hero">
 <h1>Inventory API</h1>
 <p>Products, stock movements, low-stock alerts and CSV import/export over a simple REST interface.</p>
 <div class="stats">
-<div class="stat"><b data-stat="products">${s.productCount}</b>products</div>
-<div class="stat"><b data-stat="units">${s.totalUnits}</b>units in stock</div>
-<div class="stat"><b data-stat="value">${s.totalValue.toFixed(2)}</b>total value</div>
+<div class="stat glass"><b data-stat="products">${s.productCount}</b>products</div>
+<div class="stat glass"><b data-stat="lowstock">${lowStockCount}</b>low stock</div>
+<div class="stat glass"><b data-stat="units">${s.totalUnits}</b>units in stock</div>
+<div class="stat glass"><b data-stat="value">${s.totalValue.toFixed(2)}</b>total value</div>
 </div>
 <div class="links">
 <a href="/openapi.json">OpenAPI spec</a>
 <a href="https://editor.swagger.io/?url=/openapi.json">Open in viewer</a>
+<a href="https://github.com/Sabin78910/inventory-api-node">GitHub</a>
+</div>
+</section>
+<section class="wide">
+<div class="recent glass"><h2>Recent movements</h2><pre id="recent">Loading…</pre></div>
+</section>
+<section class="wide">
+<div id="playground" class="glass">
+<h2>API playground</h2>
+<div class="row">
+<select id="path" aria-label="Endpoint">${PLAYGROUND_PATHS.map((p) => `<option>${esc(p)}</option>`).join("")}</select>
+<button id="run" type="button">Send GET</button>
+</div>
+<pre id="out" aria-live="polite">Pick an endpoint and press send.</pre>
 </div>
 </section>
 <main>
-${ENDPOINTS.map(([title, example]) => `<div class="card"><h2>${title}</h2><code>${example.replace(/&/g, "&amp;").replace(/</g, "&lt;")}</code></div>`).join("\n")}
+${ENDPOINTS.map(([title, example]) => `<div class="card glass"><h2>${esc(title)}</h2><code>${esc(example)}</code></div>`).join("\n")}
 </main>
+<script nonce="${nonce}">
+const $ = (id) => document.getElementById(id);
+const set = (k, v) => { const e = document.querySelector('[data-stat="' + k + '"]'); if (e && v !== undefined) e.textContent = v; };
+fetch("/stats").then((r) => r.json()).then((d) => {
+  set("products", d.productCount);
+  set("lowstock", d.lowStockCount);
+  $("recent").textContent = d.recentMovements.length
+    ? d.recentMovements.map((m) => "#" + m.productId + " " + m.type + " " + (m.delta > 0 ? "+" : "") + m.delta + " → " + m.balance + "  " + m.reason).join("\n")
+    : "No movements yet.";
+}).catch(() => { $("recent").textContent = "Stats unavailable."; });
+$("run").addEventListener("click", async () => {
+  const path = $("path").value;
+  $("out").textContent = "Loading…";
+  try {
+    const r = await fetch(path);
+    const t = await r.text();
+    let body = t;
+    try { body = JSON.stringify(JSON.parse(t), null, 2); } catch {}
+    $("out").textContent = r.status + " " + r.statusText + "\n\n" + body;
+  } catch (e) { $("out").textContent = "Request failed: " + e.message; }
+});
+</script>
 </body></html>`;
 
 export interface Movement {
@@ -377,8 +432,30 @@ export function createApp(opts: AppOptions = {}) {
     return { productCount: products.size, totalUnits, totalValue };
   };
 
+  const lowStock = () =>
+    [...products.values()].filter(
+      (p) => p.quantity <= (p.reorderLevel ?? defaultLevel),
+    );
+
   app.get("/", (_req, res) => {
-    res.type("html").send(landingPage(summary()));
+    const nonce = randomUUID().replace(/-/g, "");
+    res.setHeader(
+      "Content-Security-Policy",
+      `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    );
+    res.type("html").send(landingPage(summary(), nonce, lowStock().length));
+  });
+
+  app.get("/stats", (_req, res) => {
+    const recent = [...movements.values()]
+      .flat()
+      .sort((a, b) => b.id - a.id)
+      .slice(0, 5);
+    res.json({
+      productCount: products.size,
+      lowStockCount: lowStock().length,
+      recentMovements: recent,
+    });
   });
 
   app.get("/summary", (_req, res) => {
