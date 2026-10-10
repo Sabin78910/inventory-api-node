@@ -285,8 +285,12 @@ export function createApp(opts: AppOptions = {}) {
       for (const [k, v] of hits) if (t >= v.resetAt) hits.delete(k);
     }
     entry.count++;
+    const resetSecs = Math.max(0, Math.ceil((entry.resetAt - t) / 1000));
+    res.setHeader("RateLimit-Limit", max);
+    res.setHeader("RateLimit-Remaining", Math.max(0, max - entry.count));
+    res.setHeader("RateLimit-Reset", resetSecs);
     if (entry.count > max) {
-      res.setHeader("Retry-After", Math.ceil((entry.resetAt - t) / 1000));
+      res.setHeader("Retry-After", resetSecs);
       problem(res, 429, "Too many requests");
       return;
     }

@@ -89,7 +89,7 @@
     "/health": {
       "get": {
         "summary": "Health check",
-        "responses": { "200": { "description": "OK", "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } } } }
+        "responses": { "200": { "description": "OK. Every response also carries these headers.", "headers": { "RateLimit-Limit": { "description": "Requests allowed per window", "schema": { "type": "integer" } }, "RateLimit-Remaining": { "description": "Requests left in the current window (never below 0)", "schema": { "type": "integer" } }, "RateLimit-Reset": { "description": "Seconds until the window resets", "schema": { "type": "integer" } } }, "content": { "application/json": { "schema": { "type": "object", "properties": { "status": { "type": "string", "example": "ok" } } } } } } }
       }
     },
     "/openapi.json": {
