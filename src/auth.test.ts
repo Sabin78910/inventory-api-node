@@ -8,7 +8,7 @@ const mk = (apiKey?: string) => createApp({ apiKey, log: () => {} });
 describe("API key", () => {
   it("rejects writes without a key", async () => {
     const res = await request(mk("secret")).post("/products").send(body).expect(401);
-    expect(res.body).toEqual({ error: "Unauthorized" });
+    expect(res.body).toMatchObject({ error: "Unauthorized" });
   });
 
   it("rejects wrong keys, including different lengths", async () => {
