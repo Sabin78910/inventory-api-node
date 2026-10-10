@@ -15,6 +15,16 @@ const ProductInput = z.object({
   quantity: z.number().int().nonnegative(),
   reorderLevel: z.number().int().nonnegative().optional(),
 });
+const ProductPatch = ProductInput.pick({
+  name: true,
+  price: true,
+  reorderLevel: true,
+})
+  .partial()
+  .strict()
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: "At least one field is required",
+  });
 const PageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
   offset: z.coerce.number().int().min(0).default(0),
@@ -431,6 +441,23 @@ export function createApp(opts: AppOptions = {}) {
     const product = { id: nextId++, ...parsed.data };
     products.set(product.id, product);
     res.status(201).json(product);
+  });
+
+  app.patch("/products/:id", (req, res) => {
+    const p = products.get(Number(req.params.id));
+    if (!p) {
+      res.status(404).json({ error: "Not found" });
+      return;
+    }
+    const parsed = ProductPatch.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: parsed.error.flatten() });
+      return;
+    }
+    for (const [k, v] of Object.entries(parsed.data)) {
+      if (v !== undefined) Object.assign(p, { [k]: v });
+    }
+    res.json(p);
   });
 
   app.patch("/products/:id/stock", (req, res) => {
