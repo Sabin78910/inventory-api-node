@@ -23,7 +23,8 @@
           "sku": { "type": "string", "minLength": 1, "maxLength": 40 },
           "price": { "type": "number", "minimum": 0 },
           "quantity": { "type": "integer", "minimum": 0 },
-          "reorderLevel": { "type": "integer", "minimum": 0 }
+          "reorderLevel": { "type": "integer", "minimum": 0 },
+          "category": { "type": "string", "minLength": 1, "maxLength": 50 }
         }
       },
       "Product": {
@@ -115,6 +116,7 @@
           { "name": "sort", "in": "query", "schema": { "type": "string", "enum": ["price", "name"] } },
           { "name": "order", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"], "default": "asc" } },
           { "name": "q", "in": "query", "description": "Search name or SKU", "schema": { "type": "string", "maxLength": 100 } },
+          { "name": "category", "in": "query", "description": "Only products in this category (case-insensitive)", "schema": { "type": "string", "maxLength": 50 } },
           { "name": "lowStock", "in": "query", "description": "Only products with quantity <= N", "schema": { "type": "integer" } }
         ],
         "responses": {
@@ -148,7 +150,7 @@
     "/products/import": {
       "post": {
         "summary": "Import products from CSV",
-        "description": "Header must include name, sku, price, quantity; reorderLevel is optional.",
+        "description": "Header must include name, sku, price, quantity; reorderLevel and category are optional.",
         "security": [{ "ApiKey": [] }],
         "requestBody": { "required": true, "content": { "text/csv": { "schema": { "type": "string" } } } },
         "responses": {
@@ -173,9 +175,9 @@
         }
       },
       "patch": {
-        "summary": "Edit product details (name, price, reorderLevel); stock is unchanged",
+        "summary": "Edit product details (name, price, reorderLevel, category); stock is unchanged",
         "security": [{ "ApiKey": [] }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 }, "price": { "type": "number", "minimum": 0 }, "reorderLevel": { "type": "integer", "minimum": 0 } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 }, "price": { "type": "number", "minimum": 0 }, "reorderLevel": { "type": "integer", "minimum": 0 }, "category": { "type": "string", "minLength": 1, "maxLength": 50 } } } } } },
         "responses": {
           "200": { "description": "Updated product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
