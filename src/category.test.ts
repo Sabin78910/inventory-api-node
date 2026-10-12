@@ -47,7 +47,7 @@ describe("product category", () => {
     const app = mk();
     await add(app, "A", { category: "Cables, long" });
     const csv = (await request(app).get("/products.csv").expect(200)).text;
-    expect(csv.split("\r\n")[0]).toBe("name,sku,price,quantity,reorderLevel,category");
+    expect(csv.split("\r\n")[0]).toBe("name,sku,price,quantity,reorderLevel,category,archived");
     const app2 = mk();
     const res = await request(app2).post("/products/import").set("Content-Type", "text/csv").send(csv);
     expect(res.body.imported).toBe(1);

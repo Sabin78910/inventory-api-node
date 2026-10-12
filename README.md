@@ -23,6 +23,8 @@ GET /health · GET /products?lowStock=N&category=X · GET /products/:id · POST 
 
 Products have an optional `category` (1–50 chars) on create/PATCH and in CSV import/export; `GET /products?category=x` filters case-insensitively and combines with `q`, `sort`, `limit` and `offset`.
 
+Products have an `archived` flag (default false), set with `PATCH /products/:id {archived: boolean}`; restore by setting it back to false. `GET /products` returns only active products by default and `?archived=true` returns only archived ones (anything other than `true`/`false` is a 400). Archived products are excluded from `/alerts/low-stock`, `/stats` and `/summary`, remain readable via `GET /products/:id`, `/products/:id/movements` and the CSV export (`archived` column), and reject stock changes (stock, stocktake, movements, batch) with a 409 problem+json.
+
 `POST /products` accepts an optional `Idempotency-Key` header: a retry with the same key and body replays the original response (`Idempotent-Replayed: true`); same key with a different body returns 422. Keys live in memory for 24 h.
 
 `GET /products/:id/movements` is newest-first and accepts `limit` (1–200, default 50), `offset` and `since` (ISO 8601; only movements at or after it). It still returns a JSON array; the count after the `since` filter, before paging, is in the `X-Total-Count` header.
