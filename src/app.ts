@@ -23,6 +23,7 @@ const ProductPatch = ProductInput.pick({
   reorderLevel: true,
   category: true,
 })
+  .extend({ archived: z.boolean() })
   .partial()
   .strict()
   .refine((v) => Object.values(v).some((x) => x !== undefined), {
@@ -35,6 +36,7 @@ const PageQuery = z.object({
   order: z.enum(["asc", "desc"]).default("asc"),
   q: z.string().trim().max(100).optional(),
   category: z.string().trim().max(50).optional(),
+  archived: z.enum(["true", "false"]).default("false"),
 });
 const MovementQuery = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
@@ -93,8 +95,8 @@ const BatchItem = z.object({
 });
 const BatchInput = z.object({ items: z.array(BatchItem).min(1) });
 
-const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel", "category"];
-const csvCell = (v: string | number | undefined) => {
+const CSV_HEADER = ["name", "sku", "price", "quantity", "reorderLevel", "category", "archived"];
+const csvCell = (v: string | number | boolean | undefined) => {
   let s = v === undefined ? "" : String(v);
   // neutralise spreadsheet formula injection
   if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
@@ -260,6 +262,7 @@ export interface Movement {
 
 export interface Product extends z.infer<typeof ProductInput> {
   id: number;
+  archived: boolean;
 }
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000;
@@ -303,6 +306,12 @@ export function createApp(opts: AppOptions = {}) {
     if (tags.includes("*") || tags.includes(etagFor(p))) return true;
     problem(res, 412, "Precondition failed: stale If-Match");
     return false;
+  };
+  // stock changes are refused on archived products; sends 409 and returns true
+  const archivedConflict = (res: Response, p: Product) => {
+    if (!p.archived) return false;
+    problem(res, 409, "Product is archived; restore it before changing stock");
+    return true;
   };
   const record = (
     p: Product,
@@ -429,16 +438,19 @@ export function createApp(opts: AppOptions = {}) {
   const summary = () => {
     let totalUnits = 0;
     let totalValue = 0;
+    let productCount = 0;
     for (const p of products.values()) {
+      if (p.archived) continue;
+      productCount++;
       totalUnits += p.quantity;
       totalValue += p.quantity * p.price;
     }
-    return { productCount: products.size, totalUnits, totalValue };
+    return { productCount, totalUnits, totalValue };
   };
 
   const lowStock = () =>
     [...products.values()].filter(
-      (p) => p.quantity <= (p.reorderLevel ?? defaultLevel),
+      (p) => !p.archived && p.quantity <= (p.reorderLevel ?? defaultLevel),
     );
 
   app.get("/", (_req, res) => {
@@ -456,7 +468,7 @@ export function createApp(opts: AppOptions = {}) {
       .sort((a, b) => b.id - a.id)
       .slice(0, 5);
     res.json({
-      productCount: products.size,
+      productCount: summary().productCount,
       lowStockCount: lowStock().length,
       recentMovements: recent,
     });
@@ -468,9 +480,8 @@ export function createApp(opts: AppOptions = {}) {
 
   app.get("/alerts/low-stock", (_req, res) => {
     const alerts = [];
-    for (const p of products.values()) {
+    for (const p of lowStock()) {
       const reorderLevel = p.reorderLevel ?? defaultLevel;
-      if (p.quantity > reorderLevel) continue;
       alerts.push({
         id: p.id,
         sku: p.sku,
@@ -491,11 +502,12 @@ export function createApp(opts: AppOptions = {}) {
       invalid(res, page.error);
       return;
     }
-    const { limit, offset, sort, order, q, category } = page.data;
+    const { limit, offset, sort, order, q, category, archived } = page.data;
     const cat = category?.toLowerCase();
     const needle = q?.toLowerCase();
     const all = [...products.values()].filter(
       (p) =>
+        p.archived === (archived === "true") &&
         (!cat || p.category?.toLowerCase() === cat) &&
         (!needle ||
           p.name.toLowerCase().includes(needle) ||
@@ -525,7 +537,7 @@ export function createApp(opts: AppOptions = {}) {
     const lines = [CSV_HEADER.join(",")];
     for (const p of products.values()) {
       lines.push(
-        [p.name, p.sku, p.price, p.quantity, p.reorderLevel, p.category]
+        [p.name, p.sku, p.price, p.quantity, p.reorderLevel, p.category, p.archived]
           .map(csvCell)
           .join(","),
       );
@@ -578,7 +590,7 @@ export function createApp(opts: AppOptions = {}) {
         return;
       }
       skus.add(parsed.data.sku);
-      const product = { id: nextId++, ...parsed.data };
+      const product = { id: nextId++, archived: false, ...parsed.data };
       products.set(product.id, product);
       rows.push({ row, ok: true });
     });
@@ -658,7 +670,7 @@ export function createApp(opts: AppOptions = {}) {
       problem(res, 409, "SKU already exists");
       return;
     }
-    const product = { id: nextId++, ...parsed.data };
+    const product = { id: nextId++, archived: false, ...parsed.data };
     products.set(product.id, product);
     res.setHeader("ETag", etagFor(product));
     res.status(201).json(product);
@@ -689,6 +701,7 @@ export function createApp(opts: AppOptions = {}) {
       problem(res, 404, "Not found");
       return;
     }
+    if (archivedConflict(res, p)) return;
     if (!preconditionOk(req, res, p)) return;
     const parsed = StockChange.safeParse(req.body);
     if (!parsed.success) {
@@ -713,6 +726,7 @@ export function createApp(opts: AppOptions = {}) {
       problem(res, 404, "Not found");
       return;
     }
+    if (archivedConflict(res, p)) return;
     if (!preconditionOk(req, res, p)) return;
     const parsed = Stocktake.safeParse(req.body);
     if (!parsed.success) {
@@ -738,6 +752,15 @@ export function createApp(opts: AppOptions = {}) {
     const parsed = BatchInput.safeParse(req.body);
     if (!parsed.success) {
       invalid(res, parsed.error);
+      return;
+    }
+    const archivedIds = parsed.data.items
+      .filter(({ id }) => products.get(id)?.archived)
+      .map(({ id }) => id);
+    if (archivedIds.length > 0) {
+      problem(res, 409, "Batch rejected; archived products cannot change stock", {
+        errors: [...new Set(archivedIds)].map((id) => ({ id })),
+      });
       return;
     }
     // validate everything against running balances before mutating anything
@@ -779,6 +802,7 @@ export function createApp(opts: AppOptions = {}) {
       problem(res, 404, "Not found");
       return;
     }
+    if (archivedConflict(res, p)) return;
     if (!preconditionOk(req, res, p)) return;
     const parsed = MovementInput.safeParse(req.body);
     if (!parsed.success) {

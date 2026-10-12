@@ -21,6 +21,8 @@ GET /health · GET /products?lowStock=N&category=X · GET /products/:id · POST 
 
 `POST /products/:id/stocktake` sets stock to the physically counted quantity (`counted`, a non-negative integer; optional `reason`, default "stocktake") and records one `adjust` movement whose delta is the variance. It returns `{product, movement}`; a zero variance changes nothing and returns `movement: null`. Honours `If-Match` and requires `X-API-Key`.
 
+Products can be archived with `PATCH /products/:id {"archived": true}` and restored with `{"archived": false}`; history is kept. `GET /products` returns only active products by default and `?archived=true` returns only archived ones. Archived products are left out of `/alerts/low-stock`, `/stats` and `/summary`, stay readable via `GET /products/:id` and `/movements`, appear in the CSV export (`archived` column), and reject stock changes with `409`.
+
 Products have an optional `category` (1–50 chars) on create/PATCH and in CSV import/export; `GET /products?category=x` filters case-insensitively and combines with `q`, `sort`, `limit` and `offset`.
 
 `POST /products` accepts an optional `Idempotency-Key` header: a retry with the same key and body replays the original response (`Idempotent-Replayed: true`); same key with a different body returns 422. Keys live in memory for 24 h.
