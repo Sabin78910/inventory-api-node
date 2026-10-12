@@ -30,7 +30,7 @@
       "Product": {
         "allOf": [
           { "$ref": "#/components/schemas/ProductInput" },
-          { "type": "object", "required": ["id"], "properties": { "id": { "type": "integer" } } }
+          { "type": "object", "required": ["id", "archived"], "properties": { "id": { "type": "integer" }, "archived": { "type": "boolean", "default": false, "description": "Archived products are hidden from lists, alerts, stats and summary, and refuse stock changes" } } }
         ]
       },
       "ProductPage": {
@@ -124,6 +124,7 @@
           { "name": "order", "in": "query", "schema": { "type": "string", "enum": ["asc", "desc"], "default": "asc" } },
           { "name": "q", "in": "query", "description": "Search name or SKU", "schema": { "type": "string", "maxLength": 100 } },
           { "name": "category", "in": "query", "description": "Only products in this category (case-insensitive)", "schema": { "type": "string", "maxLength": 50 } },
+          { "name": "archived", "in": "query", "description": "`true` returns only archived products; default `false` returns only active ones", "schema": { "type": "string", "enum": ["true", "false"], "default": "false" } },
           { "name": "lowStock", "in": "query", "description": "Only products with quantity <= N", "schema": { "type": "integer" } }
         ],
         "responses": {
@@ -182,9 +183,9 @@
         }
       },
       "patch": {
-        "summary": "Edit product details (name, price, reorderLevel, category); stock is unchanged",
+        "summary": "Edit product details (name, price, reorderLevel, category) or archive/restore via archived; stock is unchanged",
         "security": [{ "ApiKey": [] }],
-        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 }, "price": { "type": "number", "minimum": 0 }, "reorderLevel": { "type": "integer", "minimum": 0 }, "category": { "type": "string", "minLength": 1, "maxLength": 50 } } } } } },
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "minProperties": 1, "additionalProperties": false, "properties": { "name": { "type": "string", "minLength": 1, "maxLength": 100 }, "price": { "type": "number", "minimum": 0 }, "reorderLevel": { "type": "integer", "minimum": 0 }, "category": { "type": "string", "minLength": 1, "maxLength": 50 }, "archived": { "type": "boolean" } } } } } },
         "responses": {
           "200": { "description": "Updated product", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Product" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
@@ -214,6 +215,7 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Product is archived; stock cannot change", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "422": { "description": "Insufficient stock", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
@@ -232,6 +234,7 @@
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
           "404": { "$ref": "#/components/responses/NotFound" },
+          "409": { "description": "Product is archived; stock cannot change", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
       }
@@ -246,6 +249,7 @@
           "200": { "description": "Updated products, one per distinct id in first-seen order", "content": { "application/json": { "schema": { "type": "array", "items": { "$ref": "#/components/schemas/Product" } } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "An item is an archived product; nothing is applied", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "413": { "description": "More than 100 items", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "422": { "description": "One or more items failed; `errors` lists {index, id, reason}", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
         }
@@ -276,6 +280,7 @@
           "201": { "description": "Created", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Movement" } } } },
           "400": { "$ref": "#/components/responses/BadRequest" },
           "401": { "$ref": "#/components/responses/Unauthorized" },
+          "409": { "description": "Product is archived; stock cannot change", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } },
           "404": { "$ref": "#/components/responses/NotFound" }
         }
