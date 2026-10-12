@@ -15,9 +15,11 @@ docker build -t inventory-api . && docker run -p 3000:3000 inventory-api
 ```
 
 ## API / Output
-GET /health · GET /products?lowStock=N&category=X · GET /products/:id · POST /products · PATCH /products/:id/stock {delta} · DELETE /products/:id · POST /stock/batch {items:[{id,delta,reason?}]}
+GET /health · GET /products?lowStock=N&category=X · GET /products/:id · POST /products · PATCH /products/:id/stock {delta} · DELETE /products/:id · POST /stock/batch {items:[{id,delta,reason?}]} · POST /products/:id/stocktake {counted,reason?}
 
 `POST /stock/batch` applies 1–100 adjustments atomically (413 above 100). If any item is unknown or would make stock negative, nothing is applied and a 422 problem+json lists each failure as `{index, id, reason}`. Repeated ids are applied in order and checked cumulatively; success returns the updated products and records one movement per item.
+
+`POST /products/:id/stocktake` sets stock to the physically counted quantity (`counted`, a non-negative integer; optional `reason`, default "stocktake") and records one `adjust` movement whose delta is the variance. It returns `{product, movement}`; a zero variance changes nothing and returns `movement: null`. Honours `If-Match` and requires `X-API-Key`.
 
 Products have an optional `category` (1–50 chars) on create/PATCH and in CSV import/export; `GET /products?category=x` filters case-insensitively and combines with `q`, `sort`, `limit` and `offset`.
 
