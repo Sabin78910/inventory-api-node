@@ -219,6 +219,23 @@
         }
       }
     },
+    "/products/{id}/stocktake": {
+      "parameters": [{ "$ref": "#/components/parameters/id" }],
+      "post": {
+        "summary": "Set stock to a physically counted quantity",
+        "description": "Sets stock to `counted` and records one 'adjust' movement whose delta is the variance (counted - current). A variance of 0 changes nothing and records no movement (movement is null).",
+        "security": [{ "ApiKey": [] }],
+        "parameters": [{ "$ref": "#/components/parameters/ifMatch" }],
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "required": ["counted"], "properties": { "counted": { "type": "integer", "minimum": 0 }, "reason": { "type": "string", "minLength": 1, "maxLength": 200, "default": "stocktake" } } } } } },
+        "responses": {
+          "200": { "description": "Updated product and the recorded movement (null when the variance is 0)", "content": { "application/json": { "schema": { "type": "object", "properties": { "product": { "$ref": "#/components/schemas/Product" }, "movement": { "nullable": true, "type": "object" } } } } } },
+          "400": { "$ref": "#/components/responses/BadRequest" },
+          "401": { "$ref": "#/components/responses/Unauthorized" },
+          "404": { "$ref": "#/components/responses/NotFound" },
+          "412": { "description": "If-Match did not match the current ETag", "content": { "application/problem+json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+        }
+      }
+    },
     "/stock/batch": {
       "post": {
         "summary": "Atomically apply up to 100 stock adjustments",

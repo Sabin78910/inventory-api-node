@@ -46,6 +46,10 @@ const MovementQuery = z.object({
     .optional(),
 });
 const StockChange = z.object({ delta: z.number().int() });
+const Stocktake = z.object({
+  counted: z.number().int().nonnegative(),
+  reason: z.string().trim().min(1).max(200).optional(),
+});
 const MovementInput = z.object({
   type: z.enum(["in", "out", "adjust"]),
   quantity: z.number().int().nonnegative(),
@@ -701,6 +705,28 @@ export function createApp(opts: AppOptions = {}) {
     }
     res.setHeader("ETag", etagFor(p));
     res.json(p);
+  });
+
+  app.post("/products/:id/stocktake", (req, res) => {
+    const p = products.get(Number(req.params.id));
+    if (!p) {
+      problem(res, 404, "Not found");
+      return;
+    }
+    if (!preconditionOk(req, res, p)) return;
+    const parsed = Stocktake.safeParse(req.body);
+    if (!parsed.success) {
+      invalid(res, parsed.error);
+      return;
+    }
+    const { counted, reason } = parsed.data;
+    const variance = counted - p.quantity;
+    const movement =
+      variance === 0
+        ? null
+        : record(p, "adjust", variance, reason ?? "stocktake");
+    res.setHeader("ETag", etagFor(p));
+    res.json({ product: p, movement });
   });
 
   app.post("/stock/batch", (req, res) => {
